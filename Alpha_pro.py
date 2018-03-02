@@ -14,17 +14,29 @@ mypath = r"c:\Python\git\Alpha project\output\\"
 
 def query(df):    
     while True:
-        site = input('Query? ')
+        site = input('Site name: ')
         if site == 'n' or '': break
     
-        gbLTE = df['LTE'].groupby('Site Name').get_group(site)
+        gbLTEold = df['LTE_old'].groupby('Site Name').get_group(site)
+        gbLTEnew = df['LTE_new'].groupby('Site Name').get_group(site)
     
         a = input('RFDS? ')
         if a == 'y': getRFDS(site)
         
-        ip = gbLTE['IP'].drop_duplicates()
+        ip = gbLTEnew['IP'].drop_duplicates()
         
-        hw = gbLTE\
+        hwold = gbLTEold\
+            .groupby('Layer', as_index=False)['Site Name','Sector Name','RMOD','Rfsharing','TXRX','dlMimoMode','pMax','Freq/BW']\
+            .agg({'Site Name':lambda x: str(set(x)).strip("{}'"),
+                  'Sector Name':'count',
+                  'RMOD':lambda x: str(set(x)).strip("{}'"),
+                  'Rfsharing':lambda x: str(set(x)).strip("{}'"),
+                  'TXRX':lambda x: str(set(x)).strip("{}'"),
+                  'dlMimoMode':lambda x: str(set(x)).strip("{}'"),
+                  'pMax':lambda x: str(set(x)).strip("{}'"),
+                  'Freq/BW':lambda x: str(set(x)).strip("{}'")})
+ 
+        hwnew = gbLTEnew\
             .groupby('Layer', as_index=False)['Site Name','Sector Name','RMOD','Rfsharing','TXRX','dlMimoMode','pMax','Freq/BW']\
             .agg({'Site Name':lambda x: str(set(x)).strip("{}'"),
                   'Sector Name':'count',
@@ -36,29 +48,43 @@ def query(df):
                   'Freq/BW':lambda x: str(set(x)).strip("{}'")})
         
         
-        dt = gbLTE[['MRBTS/WBTS','Site Name','Sector Name','Cell ID','Freq/BW','PCI/PSC','administrativeState','cellBarred','primPlmnCellres']]
+        dt = gbLTEnew[['MRBTS/WBTS','Site Name','Sector Name','Cell ID','Freq/BW','PCI/PSC','administrativeState','cellBarred','primPlmnCellres']]
         
-        if site in df['3G']['Site Name'].drop_duplicates().values:
-            gb3G = df['3G'].groupby('Site Name').get_group(site)
-            hw3G = gb3G\
+        if site in df['3G_old']['Site Name'].drop_duplicates().values:
+            gb3Gold = df['3G_old'].groupby('Site Name').get_group(site)
+            hw3Gold = gb3Gold\
                     .groupby('Layer', as_index=False)['Site Name','Sector Name','RMOD','Freq/BW']\
                     .agg({'Site Name':lambda x: str(set(x)).strip("{}'"),
                           'Sector Name':'count',
                           'RMOD':lambda x: str(set(x)).strip("{}'"),                          
                           'Freq/BW':lambda x: str(set(x)).strip("{}'")})            
-            hw = hw.append(hw3G)        
-            ip = ip.append(gb3G['IP'].drop_duplicates())            
-            dt = dt.append(gb3G)
+            hwold = hwold.append(hw3Gold)        
+ 
+        if site in df['3G_new']['Site Name'].drop_duplicates().values:
+            gb3Gnew = df['3G_new'].groupby('Site Name').get_group(site)
+            hw3Gnew = gb3Gnew\
+                    .groupby('Layer', as_index=False)['Site Name','Sector Name','RMOD','Freq/BW']\
+                    .agg({'Site Name':lambda x: str(set(x)).strip("{}'"),
+                          'Sector Name':'count',
+                          'RMOD':lambda x: str(set(x)).strip("{}'"),                          
+                          'Freq/BW':lambda x: str(set(x)).strip("{}'")})            
+            hwnew = hwnew.append(hw3Gnew)        
+            ip = ip.append(gb3Gnew['IP'].drop_duplicates())            
+            dt = dt.append(gb3Gnew)
+  
+       
+        dt[['MRBTS/WBTS','Site Name','Sector Name','Cell ID','Freq/BW','PCI/PSC','administrativeState','cellBarred','primPlmnCellres']].to_clipboard(index=False)        
+        input("DT data copied\nPress Enter to continue...")
         
         ip.to_clipboard(index=False)
         input("IPs copied\nPress Enter to continue...")
 
-        hw[['Site Name','Layer','Sector Name','RMOD','Rfsharing','TXRX','dlMimoMode','pMax','Freq/BW']].to_clipboard(index=False)
-        input("Hardware check copied\nPress Enter to continue...")
+        hwold[['Site Name','Layer','Sector Name','RMOD','Rfsharing','TXRX','dlMimoMode','pMax','Freq/BW']].to_clipboard(index=False)
+        input("Old Hardware check copied\nPress Enter to continue...")
         
-        dt[['MRBTS/WBTS','Site Name','Sector Name','Cell ID','Freq/BW','PCI/PSC','administrativeState','cellBarred','primPlmnCellres']].to_clipboard(index=False)        
-        input("DT data copied\nPress Enter to continue...")
-
+        hwnew[['Site Name','Layer','Sector Name','RMOD','Rfsharing','TXRX','dlMimoMode','pMax','Freq/BW']].to_clipboard(index=False)
+        input("New Hardware check copied\nPress Enter to continue...")
+        
 
 def fetch_data(statement, cn):
     df = pd.DataFrame(cn.execute(statement).fetchall())
@@ -274,13 +300,23 @@ def get3G():
     print('3G done')
     return pd.merge(df, RMOD, on='RNC_WBTS')
 
-def local_df():    
-    df = {}
+def load_df():    
+    result = {}
     curdir = os.listdir(mypath)    
-    query_date = input('(o)ld or (n)ew? ')    
+    print("Choose a baseline data")
+    for tech in ['LTE', '3G']:
+        file_dict = {i:f for i,f in enumerate(curdir) if tech in f}
+        print('Old ' + tech + ' dumps: ')
+        for i in file_dict.keys():
+            print(i,': ', file_dict[i])
+        a = input('Which one? ')
+        file = file_dict[int(a)]
+        print('Open file: ', file)
+        result[tech + '_old'] = pd.read_csv(mypath + file)
     
-    for tech in ['LTE', '3G']:        
-        if query_date == 'n':
+    a = input('Pull data from OSS? ')
+    if a == 'n':
+        for tech in ['LTE', '3G']:        
             date = datetime.datetime.strptime('2018-01-01', "%Y-%m-%d")
             for f in curdir:
                 if tech in f:
@@ -288,21 +324,28 @@ def local_df():
                     if tmp > date:
                         date = tmp
                         file = f
-        elif query_date == 'o':
-            file_dict = {i:f for i,f in enumerate(curdir) if tech in f}
-            print('Old ' + tech + ' dumps: ')
-            for i in file_dict.keys():
-                print(i,': ', file_dict[i])
-            a = input('Which one? ')
-            file = file_dict[int(a)]
+            result[tech + '_new'] = pd.read_csv(mypath + file)
         
-        print('Open file: ', file)
-        df[tech] = pd.read_csv(mypath + file)
-        if query_date == 'o':
-            df[tech]['administrativeState'] = None
-            df[tech]['cellBarred'] = None
-            df[tech]['primPlmnCellres'] = None
-    return df
+    elif a == 'y':
+        LTEengine = create_engine('oracle://aurfeng:Default1@T4OSS')
+        global LTEconnection
+        LTEconnection = LTEengine.connect()
+        result['LTE_new'] = pd.merge(getLNCEL(), getTXRX(), on='CELLID')
+        result['LTE_new'] = pd.merge(result['LTE_new'], getRMOD(), on='MRBTS/WBTS')
+        result['LTE_new'] = pd.merge(result['LTE_new'], getRFSH(), on='MRBTS/WBTS')
+        result['LTE_new'] = pd.merge(result['LTE_new'], getIPNO(), on='MRBTS/WBTS')
+        result['3G_new'] = get3G()
+        a = input('Save? ')
+        if a == 'y':
+            now = datetime.datetime.now()
+            result['LTE_new'].to_csv(mypath + str(now).split()[0] + "_" + "LTE_CFG_QUERRY.csv", index=False)
+            result['3G_new'].to_csv(mypath + str(now).split()[0] + "_" + "3G_CFG_QUERRY.csv", index=False)
+            print('Saved')
+    
+    else: print('error')
+    
+        
+    return result
 
 def getRFDS(siteID):
     
@@ -377,31 +420,7 @@ def getRFDS(siteID):
     return None
 
 def main():
-    result = {}
-    a = input('Pull data from OSS? ')
-    if a == 'n':
-        result = local_df()
-        
-    elif a == 'y':
-        LTEengine = create_engine('oracle://aurfeng:Default1@T4OSS')
-        global LTEconnection
-        LTEconnection = LTEengine.connect()
-        
-        #result['LTE'] = getLNCEL()
-        result['LTE'] = pd.merge(getLNCEL(), getTXRX(), on='CELLID')
-        result['LTE'] = pd.merge(result['LTE'], getRMOD(), on='MRBTS/WBTS')
-        result['LTE'] = pd.merge(result['LTE'], getRFSH(), on='MRBTS/WBTS')
-        result['LTE'] = pd.merge(result['LTE'], getIPNO(), on='MRBTS/WBTS')
-        result['3G'] = get3G()
-        #print(result['3G'])
-        a = input('Save? ')
-        if a == 'y':
-            now = datetime.datetime.now()
-            result['LTE'].to_csv(mypath + str(now).split()[0] + "_" + "LTE_CFG_QUERRY.csv", index=False)
-            result['3G'].to_csv(mypath + str(now).split()[0] + "_" + "3G_CFG_QUERRY.csv", index=False)
-            print('Saved')
-    else: print('error')
-    query(result)
+    query(load_df())
     
 if __name__ == "__main__":
     main()
