@@ -15,11 +15,11 @@ mypath = r"c:\Python\git\Alpha project\output\\"
 def query(df):    
     while True:
         site = input('Site name: ')
-        if site == 'n' or '': break
+        if len(site) < 8: break
     
         gbLTEold = df['LTE_old'].groupby('Site Name').get_group(site)
         gbLTEnew = df['LTE_new'].groupby('Site Name').get_group(site)
-    
+        
         a = input('RFDS? ')
         if a == 'y': getRFDS(site)
         
@@ -72,23 +72,45 @@ def query(df):
             ip = ip.append(gb3Gnew['IP'].drop_duplicates())            
             dt = dt.append(gb3Gnew)
   
-       
         dt[['MRBTS/WBTS','Site Name','Sector Name','Cell ID','Freq/BW','PCI/PSC','administrativeState','cellBarred','primPlmnCellres']].to_clipboard(index=False)        
         input("DT data copied\nPress Enter to continue...")
         
-        ip.to_clipboard(index=False)
-        input("IPs copied\nPress Enter to continue...")
+        with open(r"C:\CLI\ipfile.txt", "a") as f1:
+            #ip.to_clipboard(index=False, sep='\n')
+            f1.writelines(["\n".join(ip), "\n"])
+        input("IP file is updated\nPress Enter to continue...")
 
-        hwold[['Site Name','Layer','Sector Name','RMOD','Rfsharing','TXRX','dlMimoMode','pMax','Freq/BW']].to_clipboard(index=False)
-        input("Old Hardware check copied\nPress Enter to continue...")
+        #hwold[['Site Name','Layer','Sector Name','RMOD','Rfsharing','TXRX','dlMimoMode','pMax','Freq/BW']].to_clipboard(index=False)
+        #input("Old Hardware check copied\nPress Enter to continue...")
         
-        hwnew[['Site Name','Layer','Sector Name','RMOD','Rfsharing','TXRX','dlMimoMode','pMax','Freq/BW']].to_clipboard(index=False)
-        input("New Hardware check copied\nPress Enter to continue...")
+        #hwnew[['Site Name','Layer','Sector Name','RMOD','Rfsharing','TXRX','dlMimoMode','pMax','Freq/BW']].to_clipboard(index=False)
+        #input("New Hardware check copied\nPress Enter to continue...")
+        sitepath = mypath + "compare\\" + str(datetime.datetime.now()).split()[0] + '_' + site + '.txt'    
+        with open(sitepath, "w") as f2:
+            for l in ['L2100','L2100-2','L2100-3','L1900','L700','L600','UPCS','UAWS']:
+                f2.writelines(["{} layer:\n".format(l),
+                      "Sector #:   {:<30} => {:<30}\n".format(hw(hwold, l, 'Sector Name'), hw(hwnew, l, 'Sector Name')),
+                      "RMOD:       {:<30} => {:<30}\n".format(hw(hwold, l, 'RMOD'),        hw(hwnew, l, 'RMOD')),
+                      "Rfsharing:  {:<30} => {:<30}\n".format(hw(hwold, l, 'Rfsharing'),   hw(hwnew, l, 'Rfsharing')),
+                      "TXRX:       {:<30} => {:<30}\n".format(hw(hwold, l, 'TXRX'),        hw(hwnew, l, 'TXRX')),
+                      "dlMimoMode: {:<30} => {:<30}\n".format(hw(hwold, l, 'dlMimoMode'),  hw(hwnew, l, 'dlMimoMode')),
+                      "pMax:       {:<30} => {:<30}\n".format(hw(hwold, l, 'pMax'),        hw(hwnew, l, 'pMax')),
+                      "Freq/BW:    {:<30} => {:<30}\n".format(hw(hwold, l, 'Freq/BW'),     hw(hwnew, l, 'Freq/BW')),
+                      "="*60, "\n"]
+                        )
         
+        with open(sitepath) as f2:
+            print(f2.read())
 
 def fetch_data(statement, cn):
     df = pd.DataFrame(cn.execute(statement).fetchall())
     return df
+
+def hw(df, layer, column):
+    try:
+        return df[df['Layer']==layer][column].values[0]
+    except:
+        return 'None'
     
 def getIPNO():
     df = fetch_data("""
@@ -213,7 +235,8 @@ def getLNCEL():
     df['Layer'].cat.categories = ['L2100','L1900','L700','L2100-3','NA1','NA2','L600','NA3','NA4','NA5','L2100-2']
     df['Layer'].cat.reorder_categories(['L2100','L2100-2','L2100-3','L1900','L700','L600','NA1','NA2','NA3','NA4','NA5'], ordered=True, inplace=True)
     df['Layer'].cat.remove_unused_categories(inplace=True)
-    
+    df['Layer'] = df['Layer'].astype(str)
+        
     df.drop(['DN', 'earfcnDL', 'dlChBw'],axis=1, inplace=True)
     
     df.dlMimoMode = df.dlMimoMode.map({0:'SingleTX',\
